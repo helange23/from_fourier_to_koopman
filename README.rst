@@ -6,6 +6,13 @@ From Fourier to Koopman: Spectral methods for long-term forecasts
 
 Fourier and Koopman constitute spectral algorithms for learning linear and non-linear oscillators from data respectively.
 Both algorithms solve a global optimization problem in frequency domain and allow for modeling of systems of any dimensionality.
+The algorithms are written in _numpy_ and _pytorch_.
+
+The objective that both algorithms solve is:
+
+.. math::
+
+    \beta = \alpha + \epsilon^2
 
 The following implementation is in Python. This code accompanies the following `paper <https://arxiv.org/abs/xxx.xxxx>`_. 
 
@@ -40,14 +47,14 @@ To perform forecasting, do:
 How to use Koopman
 -----------------
 
-Because of the Running the Koopman algorithm is more involved and requires writing your own _model\_object_
+Because of the many different ways in which the Koopman algorithm can be utilized, running the Koopman algorithm is more involved and might require writing a custom _model\_object_. Below we provide an example where _f_
 
 .. code:: python
 
-    from fourier_koopman import koopman, model_object
+    from fourier_koopman import koopman, fully_connected_mse
     import numpy as np
 
-    x = np.sin(2*np.pi/24*np.arange(5000)) + np.sin(2*np.pi/33*np.arange(5000))
+    x = np.sin(2*np.pi/24*np.arange(5000))**17
 
     f = fourier(k=2)
     f.fit(x[:3500], iterations = 1000)
