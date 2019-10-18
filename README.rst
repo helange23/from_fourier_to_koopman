@@ -27,6 +27,7 @@ Fourier fits a linear oscillator to data. The number of frequencies *k* that the
 To learn the oscillator from data, do:
 
 .. code:: python
+
     from fourier_koopman import fourier
     import numpy as np
 
