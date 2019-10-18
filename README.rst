@@ -37,6 +37,8 @@ To learn the oscillator from data, do:
     f = fourier(num_freqs=2)
     f.fit(x[:3500], iterations = 1000)
 
+
+
 To perform forecasting, do:
 
 .. code:: python
@@ -52,7 +54,7 @@ In general, the class *koopman* is instantiated with a model object that specifi
 
 * the topology of *f*
 * the loss
-* the number of frequencies *k*
+* the number of frequencies *num_freqs*
 
 .. code:: python
 
