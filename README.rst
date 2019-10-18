@@ -37,10 +37,6 @@ To learn the oscillator from data, do:
     f = fourier(num_freqs=2)
     f.fit(x[:3500], iterations = 1000)
 
-    xhat = f.predict(5000)
-
-
-
 To perform forecasting, do:
 
 .. code:: python
@@ -68,8 +64,6 @@ In general, the class *koopman* is instantiated with a model object that specifi
 
     k = koopman(fully_connected_mse(x_dim=1, num_freqs=1, n=512)).cuda()
     k.fit(x[:3500], iterations = 1000, interval = 100, verbose=True)
-
-    xhat = f.predict(5000)
 
 
 
