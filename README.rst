@@ -27,14 +27,16 @@ Fourier fits a linear oscillator to data. The number of frequencies *k* that the
 To learn the oscillator from data, do:
 
 .. code:: python
-
     from fourier_koopman import fourier
     import numpy as np
 
-    x = np.sin(2*np.pi/24*np.arange(5000)) + np.sin(2*np.pi/33*np.arange(5000))
+    x = (np.sin([2*np.pi/24*np.arange(5000)]) + np.sin([2*np.pi/33*np.arange(5000)])).T
+    x = x.astype(np.float32)
 
-    f = fourier(k=2)
+    f = fourier(num_freqs=2)
     f.fit(x[:3500], iterations = 1000)
+
+    xhat = f.predict(5000)
 
 
 
@@ -61,9 +63,12 @@ In general, the class *koopman* is instantiated with a model object that specifi
     import numpy as np
 
     x = np.sin(2*np.pi/24*np.arange(5000))**17
+    x = np.expand_dims(x,-1).astype(np.float32)
 
-    k = koopman(fully_connected_mse(k=1, n=128))
-    k.fit(x[:3500], iterations = 1000)
+    k = koopman(fully_connected_mse(x_dim=1, num_freqs=1, n=512)).cuda()
+    k.fit(x[:3500], iterations = 1000, interval = 100, verbose=True)
+
+    xhat = f.predict(5000)
 
 
 
