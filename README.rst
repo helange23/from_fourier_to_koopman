@@ -86,16 +86,7 @@ Examples
 
 In the following, a more involved example is given that uses a 1D tranpose-convolutional Neural Network to learn a traveling wave.
 
-.. code:: python
-
-    from fourier_koopman import koopman, model_object
-    import numpy as np
-
-    x = np.sin(2*np.pi/24*np.arange(5000))**17
-
-    k = koopman(fully_connected_mse(k=1, n=128))
-    k.fit(x[:3500], iterations = 1000)
-
+TO DO: ADD EXAMPLE
 
 
 
