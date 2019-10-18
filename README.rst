@@ -84,12 +84,10 @@ In the following, a more involved example is given that uses a 1D tranpose-convo
 
 TO DO: ADD EXAMPLE
 
-.. raw:: html
-
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-        <iframe src="//www.youtube.com/embed/qrRu4fqWlYE" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
-    </div>
-
+.. image:: imgs/youtube_thumb.png
+    :alt: Koopman and Fourier forecasting objectives
+    :scale: 25 %
+    :link: https://www.youtube.com/watch?v=qrRu4fqWlYE
 
 --------
 Citation
