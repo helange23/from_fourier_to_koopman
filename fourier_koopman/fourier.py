@@ -9,29 +9,45 @@ import torch
 
 
 class fourier:
+    '''
     
-    def __init__(self, num_freqs, use_cpu = True):
-        '''
-        Input:
-            num_freqs: number of frequencies assumed to be present in data
-                type: int
+    Parameters
+    ----------
+    xt : TYPE: numpy.array
+         DIM: [T, ...]
+        DESCRIPTION.
         
-        '''
+        num_freqs: number of frequencies assumed to be present in data
+            type: int
+            
+        device: The device on which the computations are carried out.
+            Example: cpu, cuda:0
+            default = 'cpu'
+        
+    '''
+
+    def __init__(self, num_freqs, device = 'cpu'):
         
         self.num_freqs = num_freqs
-        self.use_cpu = use_cpu
+        self.device = device
     
     
-    def initial_guess(self, xt):
+    def fft(self, xt):
         '''
-        Given a dataset, this function performs the initial guess of the 
-        frequencies contained in the dataset
-        
-        Input:
-            xt: dataset whose first dimension is time 
-                dimensions: [T, ...]
-                type: numpy.array
+        Given temporal data xt, fft performs the initial guess of the 
+        frequencies contained in the data using the FFT.
+
+        Parameters
+        ----------
+        xt : TYPE: numpy.array
+            Temporal data of dimensions [T, ...]
+
+        Returns
+        -------
+        None.
+
         '''
+
         
         k = self.num_freqs
         self.freqs = []
@@ -74,37 +90,36 @@ class fourier:
 
     
     
-    def refine(self, data, iterations = 1000, learning_rate = 3E-9, verbose=False):
-        
+    def sgd(self, xt, iterations = 1000, learning_rate = 3E-9, verbose=False):
         '''
-        Given a dataset, this function improves the initial guess by SGD
-        
-        Input:
-            xt: dataset whose first dimension is time 
-                dimensions: [T, ...]
-                type: numpy.array
-                
-            iterations: the number of iterations over the dataset
-                tyoe: int
-                
-            learning_rate: the step size used for SGD.
-                NOTE: Because gradients grow with time, learning rate should
-                be a function of T
+        Given temporal data xt, sgd improves the initial guess of omega
+        by SGD. It uses the pseudo-inverse to obtain A.
+
+        Parameters
+        ----------
+        xt : TYPE numpy.array
+            Temporal data of dimensions [T, ...]
+        iterations : TYPE int, optional
+            Number of SGD iterations to perform. The default is 1000.
+        learning_rate : TYPE float, optional
+            Note that the learning rate should decrease with T. The default is 3E-9.
+        verbose : TYPE, optional
+            The default is False.
+
+        Returns
+        -------
+        None.
+
         '''
         
-        
-        if False:
-            A = torch.tensor(self.A, requires_grad=False).cuda()
-            freqs = torch.tensor(self.freqs, requires_grad=True).cuda()
-            data = torch.from_numpy(data).cuda()
-        else:
-            A = torch.tensor(self.A, requires_grad=False).cpu()
-            freqs = torch.tensor(self.freqs, requires_grad=True).cpu()
-            data = torch.from_numpy(data).cpu()
+        A = torch.tensor(self.A, requires_grad=False, device=self.device)
+        freqs = torch.tensor(self.freqs, requires_grad=True, device=self.device)
+        xt = torch.tensor(xt, requires_grad=False, device=self.device)
 
         o2 = torch.optim.SGD([freqs], lr=learning_rate)
         
-        t = torch.unsqueeze(torch.arange(len(data))+1,-1).type(torch.get_default_dtype())
+        t = torch.unsqueeze(torch.arange(len(xt), dtype = torch.get_default_dtype(),
+                                         device = self.device)+1,-1)
         
         loss = 0
         
@@ -113,10 +128,10 @@ class fourier:
             Omega = torch.cat([torch.cos(t*2*np.pi*freqs),
                                torch.sin(t*2*np.pi*freqs)],-1)
     
-            A = torch.matmul(torch.pinverse(Omega.data), data)
+            A = torch.matmul(torch.pinverse(Omega.data), xt)
     
             xhat = torch.matmul(Omega,A)
-            loss = torch.mean((xhat-data)**2)
+            loss = torch.mean((xhat-xt)**2)
             
             o2.zero_grad()
             loss.backward()
@@ -127,24 +142,55 @@ class fourier:
                 print(loss)
             
             
-            
         self.A = A.cpu().detach().numpy()
         self.freqs = freqs.cpu().detach().numpy()
         
         
         
-    def fit(self, data, learning_rate = 1E-5, iterations = 1000, verbose=False):
+    def fit(self, xt, learning_rate = 1E-5, iterations = 1000, verbose=False):
+        '''
         
-        self.initial_guess(data)
-        self.refine(data, iterations = iterations, 
-                    learning_rate = learning_rate/data.shape[0],
+        Parameters
+        ----------
+        xt : TYPE numpy.array
+            Temporal data of dimensions [T, ...]
+        learning_rate : TYPE float, optional
+            The default is 1E-5.
+        iterations : TYPE int, optional
+            DESCRIPTION. The default is 1000.
+        verbose : TYPE, optional
+            The default is False.
+
+        Returns
+        -------
+        None.
+
+        '''
+        
+        self.fft(xt)
+        self.sgd(xt, iterations = iterations, 
+                    learning_rate = learning_rate/xt.shape[0],
                     verbose = verbose)
         
-        return self.freqs
+
     
     
     
     def predict(self, T):
+        '''
+        Predicts the data from 1 to T.
+
+        Parameters
+        ----------
+        T : TYPE int
+            Prediction horizon
+
+        Returns
+        -------
+        TYPE numpy.array
+            xhat from 0 to T.
+
+        '''
         
         t = np.expand_dims(np.arange(T)+1,-1)
         Omega = np.concatenate([np.cos(t*2*np.pi*self.freqs),

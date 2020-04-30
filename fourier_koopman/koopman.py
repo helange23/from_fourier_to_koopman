@@ -14,87 +14,122 @@ import numpy as np
 
 
 class koopman(nn.Module):
-    '''
     
-    This implementation can utilize multiple GPUs when computing the global
-    error surface but it can also be run just on a single CPU.
-    '''
+    r'''
     
-    
-    def __init__(self, model_obj, sample_num = 12):
-        '''
-        Input:
-            model_obj: an object that specifies the function f and how to optimize
-                       it. The object needs to implement numerous function. See
-                       models.py for some examples.
-                       
-            sample_num: number of samples from temporally local loss used to 
-                        reconstruct the global error surface
+    model_obj: an object that specifies the function f and how to optimize
+               it. The object needs to implement numerous function. See
+               below for some examples.
+               
+    sample_num: number of samples from temporally local loss used to 
+                reconstruct the global error surface.
+                
+    batch_size: Number of temporal snapshots processed by SGD at a time
+                default = 32
+                type: int
         
-        '''
+    parallel_batch_size: Number of temporaly local losses sampled in parallel. 
+                         This number should be as high as possible but low enough
+                         to not cause memory issues.
+                         default = 1000
+                         type: int
+                
+    device: The device on which the computations are carried out.
+            Example: cpu, cuda:0
+            default = 'cpu'
+            
+            Note: If you wish to use multi-GPU, choose a cuda device
+            
+    multi_gpu: Indicating if sampling process is carried out on multiple GPUs
+               default = False
+               type: boolean
+        
+    '''
+    
+    
+    def __init__(self, model_obj, sample_num = 12, **kwargs):
+        
         
         super(koopman, self).__init__()
-        
         self.num_freq = model_obj.num_freq
-        
+    
+    
+        if 'device' in kwargs:
+            self.device = kwargs['device']
+            if kwargs['device'].startswith('cuda'):
+                if 'multi_gpu' in kwargs:
+                    multi_gpu = kwargs['multi_gpu']
+                else:
+                    multi_gpu = False
+            else:
+                multi_gpu = False
+        else:
+            self.device = 'cpu'
+            multi_gpu = False
+            
         #Inital guesses for frequencies
         if self.num_freq == 1:
-            self.omegas = torch.tensor([0.2])
+            self.omegas = torch.tensor([0.2], device = self.device)
         else:
-            self.omegas = torch.linspace(0.01,0.5,self.num_freq)
+            self.omegas = torch.linspace(0.01,0.5,self.num_freq, device = self.device)
             
-        self.model_obj = nn.DataParallel(model_obj)
-        
-        #number of samples to reconstruct the global error surface
+            
+        self.parallel_batch_size = kwargs['parallel_batch_size'] if 'parallel_batch_size' in kwargs else 1000
+        self.batch_size = kwargs['batch_size'] if 'batch_size' in kwargs else 32
+            
+        model_obj = model_obj.to(self.device)
+        self.model_obj = nn.DataParallel(model_obj) if multi_gpu else model_obj
+            
         self.sample_num = sample_num
-        
-        #if you run out of memory, decrease batch_per_gpu
-        self.batch_per_gpu = 4
-        self.num_gpu = 3
+
         
         
         
-    def unroll_i(self, xt, i):
-        
+    def sample_error(self, xt, i):
         '''
-        Given a dataset, this function samples temporally local loss functions
-        w.r.t. the i-th entry of omega
         
-        Input:
-            xt: dataset whose first dimension is time 
-                dimensions: [T, ...]
-                type: numpy.array
-                
-            i: index of the entry of omega
-                type: int
-            
-        Output:
-            errs: matrix that contains temporally local losses between [0,2pi/t]
-                  dimensions: [T, sample_num]
-        
+        sample_error computes all temporally local losses within the first
+        period, i.e. between [0,2pi/t]
+
+        Parameters
+        ----------
+        xt : TYPE numpy.array
+            Temporal data whose first dimension is time.
+        i : TYPE int
+            Index of the entry of omega
+
+        Returns
+        -------
+        TYPE numpy.array
+            Matrix that contains temporally local losses between [0,2pi/t]
+            dimensions: [T, sample_num]
+
         '''
         
         if type(xt) == np.ndarray:
-            xt = torch.from_numpy(xt)
+            xt = torch.tensor(xt, device = self.device)
             
-        t = torch.arange(xt.shape[0])+1
+        t = torch.arange(xt.shape[0], device=self.device)+1
         
         errors = []
         
-        batch = self.batch_per_gpu * self.num_gpu
+        batch = self.parallel_batch_size
         
         for j in range(t.shape[0]//batch):
             
-            torch.cuda.empty_cache()
+            if self.device.startswith('cuda'):
+                torch.cuda.empty_cache()
 
             ts = t[j*batch:(j+1)*batch] 
             
             o = torch.unsqueeze(self.omegas, 0)
             ts = torch.unsqueeze(ts,-1).type(torch.get_default_dtype())
             
-            ts2 = torch.arange(self.sample_num, dtype=torch.get_default_dtype())
+            ts2 = torch.arange(self.sample_num,
+                               dtype=torch.get_default_dtype(),
+                               device = self.device)
+            
             ts2 = ts2*2*np.pi/self.sample_num
-
             ts2 = ts2*ts/ts #essentially reshape
             
             ys = []
@@ -110,36 +145,40 @@ class koopman(nn.Module):
             ys = torch.stack(ys, dim=-2).data
             x = torch.unsqueeze(xt[j*batch:(j+1)*batch],dim=1)
             
-            
             loss = self.model_obj(ys, x)            
             errors.append(loss.cpu().detach().numpy())
             
-        torch.cuda.empty_cache()
+        if self.device.startswith('cuda'):
+            torch.cuda.empty_cache()
         
         return np.concatenate(errors, axis=0)
     
     
-    def optimize_omega(self, xt, i, verbose=False):
-        
-        '''
-        Given a dataset, this function updates the i-th entry of omega
-        
-        Input:
-            xt: dataset whose first dimension is time 
-                dimensions: [T, ...]
-                type: numpy.array
-                
-            i: index of the entry of omega
-                type: int
-            
-        Output: (mostly for debugging)
-            E: the global loss surface in time domain
-            E_ft: the global loss surface in freq domain
-            errs: temporally local loss function
-        
+    def fft(self, xt, i, verbose=False):
         '''
         
-        errs = self.unroll_i(xt,i)
+        fft first samples all temporaly local losses within the first period
+        and then reconstructs the global error surface w.r.t. omega_i
+
+        Parameters
+        ----------
+        xt : TYPE numpy.array
+            Temporal data whose first dimension is time.
+        i : TYPE int
+            Index of the entry of omega
+        verbose : TYPE boolean, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        E : TYPE numpy.array
+            Global loss surface in time domain.
+        E_ft : TYPE
+            Global loss surface in frequency domain.
+
+        '''
+        
+        errs = self.sample_error(xt,i)
         ft_errs = np.fft.fft(errs)
         
         E_ft = np.zeros(xt.shape[0]*self.sample_num).astype(np.complex64)
@@ -147,6 +186,7 @@ class koopman(nn.Module):
         for t in range(1,ft_errs.shape[0]+1):
             E_ft[np.arange(self.sample_num)*t] += ft_errs[t-1,:self.sample_num]
             
+        #ensuring that result is real
         E_ft = np.concatenate([E_ft, np.conj(np.flip(E_ft))])[:-1]
             
         E = np.fft.ifft(E_ft)
@@ -160,7 +200,8 @@ class koopman(nn.Module):
         
         j=0
         while not found:
-            
+            # The if statement avoids non-unique entries in omega and that the
+            # frequencies are 0 (should be handle by bias term)
             if idxs[j]>5 and np.all(np.abs(2*np.pi/omegas_actual - 1/omegas[idxs[j]])>1):
                 found = True
                 if verbose:
@@ -170,29 +211,32 @@ class koopman(nn.Module):
             
             j+=1
             
-        return E, E_ft, errs
+        return E, E_ft
     
     
     
     
-    def optimize_refine(self, xt, batch_size=128, verbose=False):
-        
+    def sgd(self, xt, verbose=False):
         '''
-        Given a dataset, this function improves parameters of f and performs 
-        SGD improvements on omega.
         
-        Input:
-            xt: dataset whose first dimension is time 
-                dimensions: [T, ...]
-                type: numpy.array
-                
-            batch_size: batch size for SGD
-                type: int
-            
-        Output:
-            loss
-        
+        sgd performs a single epoch of stochastic gradient descent on parameters
+        of f (Theta) and frequencies omega
+
+        Parameters
+        ----------
+        xt : TYPE numpy.array
+            Temporal data whose first dimension is time.
+        verbose : TYPE boolean, optional
+            The default is False.
+
+        Returns
+        -------
+        TYPE float
+            Loss.
+
         '''
+        
+        batch_size = self.batch_size
         
         T = xt.shape[0]
         
@@ -203,7 +247,7 @@ class koopman(nn.Module):
         
         
         T = xt.shape[0]
-        t = torch.arange(T)
+        t = torch.arange(T, device=self.device)
         
         losses = []
         
@@ -213,7 +257,7 @@ class koopman(nn.Module):
             o = torch.unsqueeze(omega, 0)
             ts_ = torch.unsqueeze(ts,-1).type(torch.get_default_dtype()) + 1
             
-            xt_t = torch.from_numpy(xt[ts.cpu().numpy(),:]).cuda()
+            xt_t = torch.tensor(xt[ts.cpu().numpy(),:], device=self.device)
             
             wt = ts_*o
             
@@ -243,54 +287,60 @@ class koopman(nn.Module):
     def fit(self, xt, iterations = 10, interval = 5, verbose=False):
         '''
         Given a dataset, this function alternatingly optimizes omega and 
-        parameters of f.
-        
-        Input:
-            xt: dataset whose first dimension is time 
-                dimensions: [T, ...]
-                type: numpy.array
-                
-            iterations: number of iterations over the dataset
-                type: int
-            
-            interval: the interval at which omegas are updated, i.e. if 
-                      interval is 5, then omegas are updated every 5 iterations
-                type: int
-            
+        parameters of f. Specifically, the algorithm performs interval many
+        epochs, then updates all entries in omega. This process is repeated
+        until iterations-many epochs have been performed
+
+        Parameters
+        ----------
+        xt : TYPE numpy.array
+            Temporal data whose first dimension is time.
+        iterations : TYPE int, optional
+            Total number of SGD epochs. The default is 10.
+        interval : TYPE, optional
+            The interval at which omegas are updated, i.e. if 
+            interval is 5, then omegas are updated every 5 epochs. The default is 5.
+        verbose : TYPE boolean, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        None.
+
         '''
-        
-        assert(len(xt.shape))
+    
+        assert(len(xt.shape) > 1), 'Input data needs to be at least 2D'
     
         for i in range(iterations):
             
             if i%interval == 0:
                 for k in range(self.num_freq):
-                    self.optimize_omega(xt, k, verbose=verbose)
+                    self.fft(xt, k, verbose=verbose)
             
             if verbose:
                 print('Iteration ',i)
                 print(2*np.pi/self.omegas)
             
-            l = self.optimize_refine(xt, verbose=verbose)
+            l = self.sgd(xt, verbose=verbose)
             if verbose:
                 print('Loss: ',l)
             
             
             
     def predict(self, T):
-        
         '''
-        After learning, this function will provide predictions
-        
-        Input:
-            T: prediction horizon
-                type: int
-                
-        Output:
-            x_pred: predictions
-                dimensions: [T,...]
-                type: numpy.array
-        
+        Predicts the data from 1 to T.
+
+        Parameters
+        ----------
+        T : TYPE int
+            Prediction horizon
+
+        Returns
+        -------
+        TYPE numpy.array
+            xhat from 0 to T.
+
         '''
         
         t = torch.arange(T)+1
@@ -369,7 +419,6 @@ class fully_connected_mse(model_object):
         
         
     def forward(self, y, x):
-        
         xhat = self.decode(y)
         return torch.mean((xhat-x)**2, dim=-1)
     
