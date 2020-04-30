@@ -10,19 +10,13 @@ import torch
 
 class fourier:
     '''
-    
-    Parameters
-    ----------
-    xt : TYPE: numpy.array
-         DIM: [T, ...]
-        DESCRIPTION.
         
-        num_freqs: number of frequencies assumed to be present in data
-            type: int
-            
-        device: The device on which the computations are carried out.
-            Example: cpu, cuda:0
-            default = 'cpu'
+    num_freqs: number of frequencies assumed to be present in data
+        type: int
+
+    device: The device on which the computations are carried out.
+        Example: cpu, cuda:0
+        default = 'cpu'
         
     '''
 
