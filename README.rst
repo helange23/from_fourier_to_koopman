@@ -90,18 +90,6 @@ TO DO: ADD EXAMPLE
     :scale: 25 %
     :link: https://www.youtube.com/watch?v=qrRu4fqWlYE
 
---------
-Citation
---------
-
-
-```
-@article{lange2020fourier,
-   title={From Fourier to Koopman: Spectral Methods for Long-term Time Series Prediction},
-   author={Lange, Henning and Brunton, Steven L and Kutz, Nathan},
-   journal={arXiv preprint arXiv:2004.00574},
-   year={2020}}
-```
 
 
 
