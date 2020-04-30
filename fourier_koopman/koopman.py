@@ -35,14 +35,9 @@ class koopman(nn.Module):
                          type: int
                 
     device: The device on which the computations are carried out.
-            Example: cpu, cuda:0
+            Example: cpu, cuda:0, or list of GPUs for multi-GPU usage, i.e. ['cuda:0', 'cuda:1']
             default = 'cpu'
             
-            Note: If you wish to use multi-GPU, choose a cuda device
-            
-    multi_gpu: Indicating if sampling process is carried out on multiple GPUs
-               default = False
-               type: boolean
         
     '''
     
@@ -56,11 +51,9 @@ class koopman(nn.Module):
     
         if 'device' in kwargs:
             self.device = kwargs['device']
-            if kwargs['device'].startswith('cuda'):
-                if 'multi_gpu' in kwargs:
-                    multi_gpu = kwargs['multi_gpu']
-                else:
-                    multi_gpu = False
+            if type(kwargs['device']) == list:
+                self.device = kwargs['device'][0]
+                multi_gpu = True
             else:
                 multi_gpu = False
         else:
@@ -78,7 +71,7 @@ class koopman(nn.Module):
         self.batch_size = kwargs['batch_size'] if 'batch_size' in kwargs else 32
             
         model_obj = model_obj.to(self.device)
-        self.model_obj = nn.DataParallel(model_obj) if multi_gpu else model_obj
+        self.model_obj = nn.DataParallel(model_obj, device_ids= kwargs['device']) if multi_gpu else model_obj
             
         self.sample_num = sample_num
 
