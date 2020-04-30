@@ -16,6 +16,7 @@ The objective of the algorithms is, respectively:
 
 
 This code accompanies the following `paper <https://arxiv.org/abs/2004.00574>`_. 
+A video abstract of the paper can be found `here <https://www.youtube.com/watch?v=RBYFsFr4soo>`_. Results on modeling a number of fluid flows can be found `here <https://www.youtube.com/watch?v=trbXYMqi2Tw>`_.
 
 
 -----------------
@@ -93,7 +94,15 @@ TO DO: ADD EXAMPLE
 Citation
 --------
 
-TO DO: Add bib-tex citation once paper is on arXiv
+
+
+> @article{lange2020fourier,
+>   title={From Fourier to Koopman: Spectral Methods for Long-term Time Series Prediction},
+>   author={Lange, Henning and Brunton, Steven L and Kutz, Nathan},
+>   journal={arXiv preprint arXiv:2004.00574},
+>   year={2020}
+> }
+
 
 
 -------
