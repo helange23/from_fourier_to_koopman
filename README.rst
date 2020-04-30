@@ -15,7 +15,7 @@ The objective of the algorithms is, respectively:
     :scale: 25 %
 
 
-This code accompanies the following `paper <https://arxiv.org/abs/xxx.xxxx>`_. 
+This code accompanies the following `paper <https://arxiv.org/abs/2004.00574>`_. 
 
 
 -----------------
@@ -64,7 +64,7 @@ In general, the class *koopman* is instantiated with a model object that specifi
     x = np.sin(2*np.pi/24*np.arange(5000))**17
     x = np.expand_dims(x,-1).astype(np.float32)
 
-    k = koopman(fully_connected_mse(x_dim=1, num_freqs=1, n=512)).cuda()
+    k = koopman(fully_connected_mse(x_dim=1, num_freqs=1, n=512), device='cuda:0')
     k.fit(x[:3500], iterations = 1000, interval = 100, verbose=True)
 
 
