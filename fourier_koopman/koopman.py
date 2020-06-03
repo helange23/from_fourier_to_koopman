@@ -66,6 +66,8 @@ class koopman(nn.Module):
         else:
             self.omegas = torch.linspace(0.01,0.5,self.num_freq, device = self.device)
             
+        self.multi_gpu = multi_gpu
+            
             
         self.parallel_batch_size = kwargs['parallel_batch_size'] if 'parallel_batch_size' in kwargs else 1000
         self.batch_size = kwargs['batch_size'] if 'batch_size' in kwargs else 32
@@ -152,7 +154,6 @@ class koopman(nn.Module):
         
         fft first samples all temporaly local losses within the first period
         and then reconstructs the global error surface w.r.t. omega_i
-
         Parameters
         ----------
         xt : TYPE numpy.array
@@ -161,14 +162,12 @@ class koopman(nn.Module):
             Index of the entry of omega
         verbose : TYPE boolean, optional
             DESCRIPTION. The default is False.
-
         Returns
         -------
         E : TYPE numpy.array
             Global loss surface in time domain.
         E_ft : TYPE
             Global loss surface in frequency domain.
-
         '''
         
         errs = self.sample_error(xt,i)
@@ -336,12 +335,17 @@ class koopman(nn.Module):
 
         '''
         
-        t = torch.arange(T)+1
+        t = torch.arange(T, device=self.device)+1
         ts_ = torch.unsqueeze(t,-1).type(torch.get_default_dtype())
 
         o = torch.unsqueeze(self.omegas, 0)
         k = torch.cat([torch.cos(ts_*o), torch.sin(ts_*o)], -1)
-        mu = self.model_obj.module.decode(k.cuda())
+        
+        if self.multi_gpu:
+            mu = self.model_obj.module.decode(k)
+        else:
+            mu = self.model_obj.decode(k)
+        
 
         return mu.cpu().detach().numpy()
 
