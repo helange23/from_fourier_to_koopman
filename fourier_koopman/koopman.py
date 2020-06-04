@@ -194,7 +194,7 @@ class koopman(nn.Module):
         while not found:
             # The if statement avoids non-unique entries in omega and that the
             # frequencies are 0 (should be handle by bias term)
-            if idxs[j]>5 and np.all(np.abs(2*np.pi/omegas_actual - 1/omegas[idxs[j]])>1):
+            if idxs[j]>1 and np.all(np.abs(2*np.pi/omegas_actual - 1/omegas[idxs[j]])>1):
                 found = True
                 if verbose:
                     print('Setting ',i,'to',1/omegas[idxs[j]])
@@ -276,7 +276,7 @@ class koopman(nn.Module):
     
     
     
-    def fit(self, xt, iterations = 10, interval = 5, verbose=False):
+    def fit(self, xt, iterations = 10, interval = 5, cutoff = np.inf, verbose=False):
         '''
         Given a dataset, this function alternatingly optimizes omega and 
         parameters of f. Specifically, the algorithm performs interval many
@@ -305,7 +305,7 @@ class koopman(nn.Module):
     
         for i in range(iterations):
             
-            if i%interval == 0:
+            if i%interval == 0 and i < cutoff:
                 for k in range(self.num_freq):
                     self.fft(xt, k, verbose=verbose)
             
