@@ -1,6 +1,6 @@
 
 ======
-From Fourier to Koopman: Spectral methods for long-term forecasts
+From Fourier to Koopman: Spectral methods for Long-term Forecasting
 ======
 
 
