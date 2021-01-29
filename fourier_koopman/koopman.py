@@ -4,13 +4,13 @@
 @author: Henning Lange (helange@uw.edu)
 """
 
-
 import torch
 
 from torch import nn
 from torch import optim
 
 import numpy as np
+from scipy.ndimage import gaussian_filter
 
 
 class koopman(nn.Module):
@@ -80,7 +80,7 @@ class koopman(nn.Module):
         
         
         
-    def sample_error(self, xt, i):
+    def sample_error(self, xt, which):
         '''
         
         sample_error computes all temporally local losses within the first
@@ -101,52 +101,50 @@ class koopman(nn.Module):
 
         '''
         
+        num_samples = self.sample_num
+        omega = self.omegas
+        
         if type(xt) == np.ndarray:
             xt = torch.tensor(xt, device = self.device)
             
         t = torch.arange(xt.shape[0], device=self.device)+1
         
         errors = []
-        
         batch = self.parallel_batch_size
+        pi_block = torch.zeros((num_samples, len(omega)))
+        pi_block[:, which] = torch.arange(0,num_samples)*np.pi*2/num_samples
         
-        for j in range(t.shape[0]//batch):
-            
-            if self.device.startswith('cuda'):
-                torch.cuda.empty_cache()
-
-            ts = t[j*batch:(j+1)*batch] 
-            
-            o = torch.unsqueeze(self.omegas, 0)
-            ts = torch.unsqueeze(ts,-1).type(torch.get_default_dtype())
-            
-            ts2 = torch.arange(self.sample_num,
-                               dtype=torch.get_default_dtype(),
-                               device = self.device)
-            
-            ts2 = ts2*2*np.pi/self.sample_num
-            ts2 = ts2*ts/ts #essentially reshape
-            
-            ys = []
-            
-            for iw in range(self.sample_num):
-                wt = ts*o
-                
-                wt[:,i] = ts2[:,iw]
-                
-                y = torch.cat([torch.cos(wt), torch.sin(wt)], dim=1)
-                ys.append(y)
-            
-            ys = torch.stack(ys, dim=-2).data
-            x = torch.unsqueeze(xt[j*batch:(j+1)*batch],dim=1)
-            
-            loss = self.model_obj(ys, x)            
-            errors.append(loss.cpu().detach().numpy())
+        for i in range(int(np.ceil(xt.shape[0]/batch))):
+            t_batch = t[i*batch:(i+1)*batch][:,None]
+            wt = t_batch*omega[None]
+            wt[:, which] = 0
+            wt = wt[:,None] + pi_block[None]
+            k = torch.cat([torch.cos(wt), torch.sin(wt)], -1)
+            loss = self.model_obj(k, xt[i*batch:(i+1)*batch, None]).cpu().detach().numpy()
+            errors.append(loss)
             
         if self.device.startswith('cuda'):
             torch.cuda.empty_cache()
         
         return np.concatenate(errors, axis=0)
+    
+    
+    def reconstruct(self, errors, use_heuristic = True):
+        
+        e_fft = np.fft.fft(errors)
+        E_ft = np.zeros(errors.shape[0]*self.sample_num, dtype=np.complex64)
+        
+        for t in range(1,e_fft.shape[0]+1):
+            E_ft[np.arange(self.sample_num//2)*t] += e_fft[t-1,:self.sample_num//2]
+            
+        E_ft = np.concatenate([E_ft, np.conj(np.flip(E_ft))])[:-1]
+        E = np.real(np.fft.ifft(E_ft))
+        
+        if use_heuristic:
+            E = -np.abs(E-np.median(E))
+            #E = gaussian_filter(E, 5)
+            
+        return E, E_ft
     
     
     def fft(self, xt, i, verbose=False):
@@ -170,18 +168,7 @@ class koopman(nn.Module):
             Global loss surface in frequency domain.
         '''
         
-        errs = self.sample_error(xt,i)
-        ft_errs = np.fft.fft(errs)
-        
-        E_ft = np.zeros(xt.shape[0]*self.sample_num).astype(np.complex64)
-        
-        for t in range(1,ft_errs.shape[0]+1):
-            E_ft[np.arange(self.sample_num)*t] += ft_errs[t-1,:self.sample_num]
-            
-        #ensuring that result is real
-        E_ft = np.concatenate([E_ft, np.conj(np.flip(E_ft))])[:-1]
-            
-        E = np.fft.ifft(E_ft)
+        E, E_ft = self.reconstruct(self.sample_error(xt, i))
         omegas = np.linspace(0,1,len(E))
         
         idxs = np.argsort(E[:len(E_ft)//2])
@@ -234,8 +221,8 @@ class koopman(nn.Module):
         
         omega = nn.Parameter(self.omegas)
         
-        opt = optim.SGD(self.model_obj.parameters(), lr=1e-3)
-        opt_omega = optim.SGD([omega], lr=1e-5/T)
+        opt = optim.SGD(self.model_obj.parameters(), lr=3e-3)
+        opt_omega = optim.SGD([omega], lr=1e-7/T)
         
         
         T = xt.shape[0]
@@ -302,10 +289,10 @@ class koopman(nn.Module):
         '''
     
         assert(len(xt.shape) > 1), 'Input data needs to be at least 2D'
-    
+        losses = []
         for i in range(iterations):
             
-            if i%interval == 0 and i < cutoff:
+            if i%interval == 0 and i < cutoff: 
                 for k in range(self.num_freq):
                     self.fft(xt, k, verbose=verbose)
             
@@ -316,6 +303,9 @@ class koopman(nn.Module):
             l = self.sgd(xt, verbose=verbose)
             if verbose:
                 print('Loss: ',l)
+            losses.append(l)
+            
+        return losses
             
             
             
